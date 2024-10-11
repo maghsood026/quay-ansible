@@ -1,0 +1,7 @@
+myhosts:
+  hosts:
+    quay_server:
+      ansible_ssh_user: <ssh-user>
+      ansible_ssh_pass: <ssh-pass>
+      ansible_host: <remote-host-ip>
+  

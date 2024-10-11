@@ -1,0 +1,128 @@
+- name: quay installation process
+  hosts: quay_server
+  become: true
+  vars:
+    quay_home: /home/ms2
+    username: <register-user>
+    password: <register-password>
+    registery: docker.io
+  tasks:
+    - name: installing podman
+      ansible.builtin.apt:
+        name: podman
+        state: present
+    - name: install firewalld 
+      ansible.builtin.apt:
+        name: firewalld
+        state: present
+    - name: add firewall rule for https
+      ansible.builtin.command:
+        cmd: firewall-cmd --permanent --add-port=80/tcp 
+    - name: add firewall rule
+      ansible.posix.firewalld:
+        port: 5432/tcp
+        permanent: true
+        state: enabled
+    - name: add firewall rule for quay postgres 
+      ansible.posix.firewalld:
+        port: 5432/tcp
+        permanent: true
+        state: enabled
+    - name: add firewall rule for clair postgres
+      ansible.posix.firewalld:
+        port: 5433/tcp
+        permanent: true
+        state: enabled
+    - name: add firewall rule for redis
+      ansible.posix.firewalld:
+        port: 6379/tcp
+        permanent: true
+        state: enabled
+    - name: set hostname # to it manul
+      ansible.builtin.debug:
+        msg: set some hostname
+    - name: create a directory for database 
+      ansible.builtin.file:
+        path: '{{ quay_home }}/postgres-quay' # the variable need to change ...
+        state: directory
+        mode: '0755'
+    - name: add DNS to bypass prohibitions
+      ansible.builtin.debug:
+        msg: set new dns
+    - name: login podman to registery
+      containers.podman.podman_login:
+        username: {{ username }}
+        password: {{ password }}
+        registry: {{ registery }}
+    - name: pull postgres image
+      containers.podman.podman_image:
+        name: docker.io/postgres:14
+    - name: create postgres container
+      containers.podman.podman_container:
+        name: postgresql-quay
+        image: postgres
+        state: started
+        detach: true
+        exposed_ports:
+            - 5432
+        ports:
+            - 5432: 5432
+        volume:
+            - '{{ quay_home }}/postgres-quay:/var/lib/pgsql/data:Z'
+        env:
+            POSTGRESQL_USER: quayuser
+            POSTGRESQL_PASSWORD: quaypass
+            POSTGRESQL_DATABASE: quay
+            POSTGRESQL_ADMIN_PASSWORD: adminpass
+
+    - name: debug - test pg_trgm
+      ansible.builtin.debug:
+        msg: set test pg_trgm
+
+    - name: pull redis image
+      containers.podman.podman_image:
+        name: docker.io/redis:6
+    
+    - name: run redis
+      containers.podman.podman_container:
+        name: redis
+        image:  redis
+        state: started
+        detach: true
+        exposed_ports:
+            - 6379
+        ports:
+            - 6379:6379
+        env:
+            REDIS_PASSWORD: strongpassword
+    - name: create directory for quay config
+      ansible.builtin.file:
+        path: '{{ quay_home }}/config' # the variable need to change ...
+        state: directory
+        mode: '0755'
+
+    - name: copy config file to created directory
+      ansible.builtin.copy:
+        src: ~/AnsibleWorkingDir/quayInstaller/config.yaml
+        dest: '{{ quay_home }}/config' # the variable need to change ...
+        mode: '0755'
+
+    - name: create directory for quay storage
+      ansible.builtin.file:
+        path: '{{ quay_home }}/storage' # the variable need to change ...
+        state: directory
+        mode: '0755'
+    - name: create container for quay register
+      containers.podman.podman_container:
+        name: quay
+        image: zhwenh/quay:v3.1.0
+        detach: true
+        exposed_ports:
+            - 80
+            - 443
+        ports:
+            - 80:8080
+            - 443:8443
+        volume:
+            - '{{ quay_home }}/config:/conf/stack:Z'
+            - '{{ quay_home }}/config:/conf/stack:Z'
